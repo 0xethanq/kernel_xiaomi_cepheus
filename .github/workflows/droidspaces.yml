@@ -47,20 +47,22 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="$HOME/clang/bin:$PATH"
-          make O=out ARCH=arm64 cepheus_defconfig
+          export MAKE_OPTS="LLVM=1 LLVM_IAS=1 CC=clang LD=ld.lld CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
+          make O=out ARCH=arm64 $MAKE_OPTS cepheus_defconfig
           scripts/config --file out/.config \
             -e SYSVIPC -e POSIX_MQUEUE -e IPC_NS -e PID_NS -e UTS_NS \
             -e DEVTMPFS -e DEVTMPFS_MOUNT -e CGROUP_DEVICE -e CGROUP_PIDS \
             -e CGROUP_CPUACCT -e MEMCG -e USER_NS -e MACVLAN -e SECCOMP_FILTER \
             -d ANDROID_PARANOID_NETWORK -d COMPAT_VDSO
-          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 olddefconfig
+          make O=out ARCH=arm64 $MAKE_OPTS olddefconfig
           grep -E 'CONFIG_(SYSVIPC|IPC_NS|PID_NS|UTS_NS|DEVTMPFS|CGROUP_DEVICE|SECCOMP_FILTER)=' out/.config
 
       - name: Build kernel
         run: |
           set -euo pipefail
           export PATH="$HOME/clang/bin:$PATH"
-          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 -j"$(nproc)" Image.gz-dtb
+          export MAKE_OPTS="LLVM=1 LLVM_IAS=1 CC=clang LD=ld.lld CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
+          make O=out ARCH=arm64 $MAKE_OPTS -j"$(nproc)" Image.gz-dtb
 
       - name: Repack boot with Magisk
         run: |

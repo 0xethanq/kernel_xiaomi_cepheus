@@ -69,18 +69,16 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="$HOME/clang/bin:$PATH"
+          ls -l out/vmlinux out/System.map 2>&1 || true
           echo "--- config ---"
           grep -E '^CONFIG_(VETH|BRIDGE|TUN|NET_NS)=' out/.config || true
-          echo "--- vmlinux symbols ---"
-          for sym in veth_newlink veth_setup br_add_bridge; do
-            if llvm-nm out/vmlinux 2>/dev/null | grep -q " $sym$"; then
-              echo "OK   $sym"
-            else
-              echo "MISS $sym"
-            fi
-          done
-          llvm-nm out/vmlinux 2>/dev/null | grep -q ' veth_newlink$' || { echo "VETH_MISSING: driver did not link"; exit 1; }
-          echo "veth present in vmlinux"
+          echo "--- System.map symbols ---"
+          grep -E ' (veth_newlink|veth_setup|br_add_bridge)$' out/System.map || true
+          echo "--- nm sample (first 3) ---"
+          llvm-nm out/vmlinux 2>&1 | head -3 || true
+          grep -q ' veth_newlink$' out/System.map || { echo "VETH_MISSING: driver did not link"; exit 1; }
+          echo "veth present in System.map"
+
 
 
       - name: Package kernel image

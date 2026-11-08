@@ -64,31 +64,24 @@ jobs:
           export MAKE_OPTS="LLVM=1 LLVM_IAS=1 CC=clang LD=ld.lld CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
           make O=out ARCH=arm64 $MAKE_OPTS -j"$(nproc)" Image.gz-dtb
 
-      - name: Repack boot with Magisk
+      - name: Package kernel image
         run: |
           set -euo pipefail
-          curl -fsSL -o /tmp/magisk.apk "https://github.com/topjohnwu/Magisk/releases/download/v31.1/Magisk-v31.1.apk"
-          mkdir -p /tmp/mb
-          unzip -o -j /tmp/magisk.apk "lib/x86_64/libmagiskboot.so" -d /tmp/mb
-          chmod +x /tmp/mb/libmagiskboot.so
-          curl -fsSL -o base.img "https://github.com/0xethanq/kernel_xiaomi_cepheus/releases/download/droidspaces-base/patched.img"
-          /tmp/mb/libmagiskboot.so unpack base.img
-          cp out/arch/arm64/boot/Image.gz-dtb kernel
-          /tmp/mb/libmagiskboot.so repack base.img new-boot.img
-          ls -lh new-boot.img
-          sha256sum new-boot.img
+          cp out/arch/arm64/boot/Image.gz-dtb Image.gz-dtb
+          ls -lh Image.gz-dtb
+          sha256sum Image.gz-dtb
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: boot-droidspaces
-          path: new-boot.img
+          name: Image.gz-dtb
+          path: Image.gz-dtb
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "build-${{ github.run_number }}" new-boot.img \
+          gh release create "build-${{ github.run_number }}" Image.gz-dtb \
             --repo "$GITHUB_REPOSITORY" \
             --title "droidspaces kernel build ${{ github.run_number }}" \
-            --notes "cpeheus 4.14 + Droidspaces namespaces + Magisk"
+            --notes "cepheus 4.14 + Droidspaces namespaces; repack on device with magiskboot"

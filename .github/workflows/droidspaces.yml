@@ -67,21 +67,24 @@ jobs:
       - name: Package kernel image
         run: |
           set -euo pipefail
+          cp out/arch/arm64/boot/Image Image
           cp out/arch/arm64/boot/Image.gz-dtb Image.gz-dtb
-          ls -lh Image.gz-dtb
-          sha256sum Image.gz-dtb
+          ls -lh Image Image.gz-dtb
+          sha256sum Image Image.gz-dtb
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Image.gz-dtb
-          path: Image.gz-dtb
+          name: kernel-images
+          path: |
+            Image
+            Image.gz-dtb
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "build-${{ github.run_number }}" Image.gz-dtb \
+          gh release create "build-${{ github.run_number }}" Image Image.gz-dtb \
             --repo "$GITHUB_REPOSITORY" \
             --title "droidspaces kernel build ${{ github.run_number }}" \
-            --notes "cepheus 4.14 + Droidspaces namespaces; repack on device with magiskboot"
+            --notes "cepheus 4.14 + Droidspaces namespaces; repack on device with magiskboot (replace kernel, keep kernel_dtb)"

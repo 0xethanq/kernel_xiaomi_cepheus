@@ -1,0 +1,92 @@
+name: droidspaces-kernel
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/droidspaces.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bc bison flex libssl-dev libelf-dev python3 zip unzip curl
+
+      - name: Fetch clang
+        run: |
+          set -euo pipefail
+          curl -L --retry 3 --retry-delay 5 -o /tmp/clang.tar.gz \
+            "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r530567.tar.gz"
+          mkdir -p "$HOME/clang"
+          tar -xzf /tmp/clang.tar.gz -C "$HOME/clang"
+          "$HOME/clang/bin/clang" --version
+
+      - name: Apply Droidspaces kernel patches
+        run: |
+          set -euo pipefail
+          BASE="https://raw.githubusercontent.com/ravindu644/Droidspaces-OSS/main/Documentation/resources/kernel-patches/non-GKI"
+          curl -fsSL -o /tmp/01.patch "$BASE/01.fix_kernel_panic_in_xt_qtaguid.patch"
+          curl -fsSL -o /tmp/02.patch "$BASE/02.fix_restore%20cgroup%20file%20prefix%20handling%20.patch"
+          patch -p1 --forward < /tmp/01.patch || echo "patch 01 skipped"
+          patch -p1 --forward < /tmp/02.patch || echo "patch 02 skipped"
+
+      - name: Configure
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/clang/bin:$PATH"
+          make O=out ARCH=arm64 cepheus_defconfig
+          scripts/config --file out/.config \
+            -e SYSVIPC -e POSIX_MQUEUE -e IPC_NS -e PID_NS -e UTS_NS \
+            -e DEVTMPFS -e DEVTMPFS_MOUNT -e CGROUP_DEVICE -e CGROUP_PIDS \
+            -e CGROUP_CPUACCT -e MEMCG -e USER_NS -e MACVLAN -e SECCOMP_FILTER \
+            -d ANDROID_PARANOID_NETWORK
+          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 olddefconfig
+          grep -E 'CONFIG_(SYSVIPC|IPC_NS|PID_NS|UTS_NS|DEVTMPFS|CGROUP_DEVICE|SECCOMP_FILTER)=' out/.config
+
+      - name: Build kernel
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/clang/bin:$PATH"
+          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 -j"$(nproc)" Image.gz-dtb
+
+      - name: Repack boot with Magisk
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/magisk.apk "https://github.com/topjohnwu/Magisk/releases/download/v31.1/Magisk-v31.1.apk"
+          mkdir -p /tmp/mb
+          unzip -o -j /tmp/magisk.apk "lib/x86_64/libmagiskboot.so" -d /tmp/mb
+          chmod +x /tmp/mb/libmagiskboot.so
+          curl -fsSL -o base.img "https://github.com/0xethanq/kernel_xiaomi_cepheus/releases/download/droidspaces-base/patched.img"
+          /tmp/mb/libmagiskboot.so unpack base.img
+          cp out/arch/arm64/boot/Image.gz-dtb kernel
+          /tmp/mb/libmagiskboot.so repack base.img new-boot.img
+          ls -lh new-boot.img
+          sha256sum new-boot.img
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-droidspaces
+          path: new-boot.img
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "build-${{ github.run_number }}" new-boot.img \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "droidspaces kernel build ${{ github.run_number }}" \
+            --notes "cpeheus 4.14 + Droidspaces namespaces + Magisk"

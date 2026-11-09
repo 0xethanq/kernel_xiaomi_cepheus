@@ -54,9 +54,10 @@ jobs:
             -e DEVTMPFS -e DEVTMPFS_MOUNT -e CGROUP_DEVICE -e CGROUP_PIDS \
             -e CGROUP_CPUACCT -e MEMCG -e USER_NS -e MACVLAN -e SECCOMP_FILTER \
             -e VETH -e BRIDGE -e NET_NS -e TUN \
+            -e BRIDGE_NETFILTER -e NETFILTER_XT_MATCH_ADDRTYPE \
             -d ANDROID_PARANOID_NETWORK -d COMPAT_VDSO
           make O=out ARCH=arm64 $MAKE_OPTS olddefconfig
-          grep -E 'CONFIG_(SYSVIPC|IPC_NS|PID_NS|UTS_NS|DEVTMPFS|CGROUP_DEVICE|SECCOMP_FILTER|VETH|BRIDGE|TUN)=' out/.config
+          grep -E 'CONFIG_(SYSVIPC|IPC_NS|PID_NS|UTS_NS|DEVTMPFS|CGROUP_DEVICE|SECCOMP_FILTER|VETH|BRIDGE|TUN|BRIDGE_NETFILTER|NETFILTER_XT_MATCH_ADDRTYPE)=' out/.config
 
       - name: Build kernel
         run: |
@@ -71,13 +72,15 @@ jobs:
           export PATH="$HOME/clang/bin:$PATH"
           ls -l out/vmlinux out/System.map 2>&1 || true
           echo "--- config ---"
-          grep -E '^CONFIG_(VETH|BRIDGE|TUN|NET_NS)=' out/.config || true
+          grep -E '^CONFIG_(VETH|BRIDGE|TUN|NET_NS|BRIDGE_NETFILTER|NETFILTER_XT_MATCH_ADDRTYPE)=' out/.config || true
           echo "--- System.map symbols ---"
-          grep -E ' (veth_newlink|veth_setup|br_add_bridge)$' out/System.map || true
+          grep -E ' (veth_newlink|veth_setup|br_add_bridge|br_netfilter_init|addrtype_mt_init)$' out/System.map || true
           echo "--- nm sample (first 3) ---"
           llvm-nm out/vmlinux 2>&1 | head -3 || true
           grep -q ' veth_newlink$' out/System.map || { echo "VETH_MISSING: driver did not link"; exit 1; }
-          echo "veth present in System.map"
+          grep -q '^CONFIG_BRIDGE_NETFILTER=y' out/.config || { echo "BR_NETFILTER_MISSING"; exit 1; }
+          grep -q '^CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y' out/.config || { echo "ADDRTYPE_MISSING"; exit 1; }
+          echo "veth + br_netfilter + addrtype present"
 
 
 
